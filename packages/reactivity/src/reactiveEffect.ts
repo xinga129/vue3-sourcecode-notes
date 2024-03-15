@@ -15,6 +15,8 @@ import {
 // which maintains a Set of subscribers, but we simply store them as
 // raw Maps to reduce memory overhead.
 type KeyToDepMap = Map<any, Dep>
+
+// 原始数据对象map
 const targetMap = new WeakMap<object, KeyToDepMap>()
 
 export const ITERATE_KEY = Symbol(__DEV__ ? 'iterate' : '')
@@ -26,18 +28,22 @@ export const MAP_KEY_ITERATE_KEY = Symbol(__DEV__ ? 'Map key iterate' : '')
  * This will check which effect is running at the moment and record it as dep
  * which records all effects that depend on the reactive property.
  *
- * @param target - Object holding the reactive property.
- * @param type - Defines the type of access to the reactive property.
- * @param key - Identifier of the reactive property to track.
+ * @param target 原始数据 - Object holding the reactive property.
+ * @param type 示这次依赖收集的类型 - Defines the type of access to the reactive property.
+ * @param key 访问的属性- Identifier of the reactive property to track.
  */
 export function track(target: object, type: TrackOpTypes, key: unknown) {
+  // 是否应该收集依赖
+  // 当前激活的 effect
   if (shouldTrack && activeEffect) {
     let depsMap = targetMap.get(target)
     if (!depsMap) {
+      // 每个 target 对应一个 depsMap
       targetMap.set(target, (depsMap = new Map()))
     }
     let dep = depsMap.get(key)
     if (!dep) {
+      // 每个 key 对应一个 dep 集合
       depsMap.set(key, (dep = createDep(() => depsMap!.delete(key))))
     }
     trackEffect(

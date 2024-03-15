@@ -38,17 +38,20 @@ function targetTypeMap(rawType: string) {
   switch (rawType) {
     case 'Object':
     case 'Array':
-      return TargetType.COMMON
+      return TargetType.COMMON // 1 普通的对象或者数组
     case 'Map':
     case 'Set':
     case 'WeakMap':
     case 'WeakSet':
-      return TargetType.COLLECTION
+      return TargetType.COLLECTION // 2 集合类型
     default:
-      return TargetType.INVALID
+      return TargetType.INVALID  // 0 其他 Date类型 RegE×p类型和 Promise类型的数据都会返回0。
   }
 }
 
+// 通过执行 getTargetType 函数来判断对象的数据类型
+// 首先检测对象是否有 SKIP 属性，以及对象是否不可扩展: 满足其中之一，则返回0，表示该对象不合法
+// 都不满足则进一步通过 targetTypeMap 函数来判断： 对于普通的对象或者数组返回1, 对于集合类型的对象返回2，其他则返回0
 function getTargetType(value: Target) {
   return value[ReactiveFlags.SKIP] || !Object.isExtensible(value)
     ? TargetType.INVALID
@@ -76,13 +79,14 @@ export type UnwrapNestedRefs<T> = T extends Ref ? T : UnwrapRefSimple<T>
 export function reactive<T extends object>(target: T): UnwrapNestedRefs<T>
 export function reactive(target: object) {
   // if trying to observe a readonly proxy, return the readonly version.
+  // 如果尝试把一个 readonly proxy 变成响应式的, 就直接返回这个 readonly proxy
   if (isReadonly(target)) {
     return target
   }
   return createReactiveObject(
     target,
     false,
-    mutableHandlers,
+    mutableHandlers, // reactive 函数传入的 baseHandlers 值是 mutableHandlers
     mutableCollectionHandlers,
     reactiveMap,
   )
@@ -246,6 +250,8 @@ function createReactiveObject(
   collectionHandlers: ProxyHandler<any>,
   proxyMap: WeakMap<Target, any>,
 ) {
+
+  // （1） 目标必须是对象或数组类型
   if (!isObject(target)) {
     if (__DEV__) {
       warn(`value cannot be made reactive: ${String(target)}`)
@@ -254,26 +260,42 @@ function createReactiveObject(
   }
   // target is already a Proxy, return it.
   // exception: calling readonly() on a reactive object
+
+  // （2） target已经是Proxy 类型的对象，直接返回
+  // 有个例外: 如果是readonly作用于一个响应式对象，则继续
   if (
     target[ReactiveFlags.RAW] &&
     !(isReadonly && target[ReactiveFlags.IS_REACTIVE])
   ) {
     return target
   }
+
   // target already has corresponding Proxy
+  // （3） 如果 target 已经有对应的Proxy, 返回对应的Proxy
   const existingProxy = proxyMap.get(target)
+
   if (existingProxy) {
     return existingProxy
   }
+
   // only specific value types can be observed.
+
+  // （4） 对原始对象的类型做进一步的限制°
+  // 只有白名单里的类型数据才可以变成响应式的
   const targetType = getTargetType(target)
   if (targetType === TargetType.INVALID) {
     return target
   }
+  // （5）通过 Proxy API 劫持 target 对象, 把它变成响应式的
+  // 利用 proxy 创建响应式对象
   const proxy = new Proxy(
     target,
-    targetType === TargetType.COLLECTION ? collectionHandlers : baseHandlers,
+    targetType === TargetType.COLLECTION ? collectionHandlers : baseHandlers, // 重点分析 普通对象和数组类型数据的 proxy 处理器对象
   )
+
+  // 缓存已经代理的对象
+ // （6）对同一个原始对象多次执行reactive函数却返回同一个响应式对象的原因:
+ // 把原始对象 target 作为key、响应式对象proxy作为value存储到 Map 类型的对象proxyMap中
   proxyMap.set(target, proxy)
   return proxy
 }
